@@ -11,87 +11,143 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            /* Ensure body fills the entire viewport */
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden; /* Prevent scrolling */
+        }
+        /* The main container for the entire application */
+        #app-container {
+            width: calc(100% - 2rem); /* Account for body padding */
+            height: calc(100% - 2rem); /* Account for body padding */
         }
         #video, #imagePreview, #canvas {
-            border-radius: 0.75rem; /* rounded-lg */
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* shadow-md */
+            border-radius: 0.75rem; /* rounded-lg, though might be obscured by fullscreen */
         }
-        /* Style for the detection result cards */
-        .detection-card {
-            background-color: #f3f4f6; /* gray-100 */
-            border-left: 4px solid #10b981; /* emerald-500 */
-            border-radius: 0.5rem; /* rounded-md */
-            padding: 0.75rem 1rem; /* p-3 */
-            margin-bottom: 0.5rem; /* mb-2 */
+        /* Style for the detection progress bars */
+        .detection-bar-container {
+            background-color: rgba(243, 244, 246, 0.2); /* gray-100 with some opacity */
+            border-radius: 0.25rem; /* rounded-sm */
+            overflow: hidden;
+            height: 24px; /* Fixed height for bars */
+            margin-bottom: 0.5rem;
+            position: relative;
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: center;
+            font-size: 0.75rem; /* text-xs */
+            color: #1f2937; /* gray-800 */
+        }
+        .detection-bar {
+            background-color: #10b981; /* emerald-500 */
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .detection-bar-label {
+            position: absolute;
+            z-index: 1; /* Ensure text is above the bar */
+            color: #ffffff; /* White text on bar */
+            font-weight: 500; /* font-medium */
+            mix-blend-mode: difference; /* Ensures text is visible on both light/dark parts of bar */
+            padding: 0 0.5rem; /* px-2 */
         }
         /* Custom scrollbar for detection list */
         .custom-scrollbar::-webkit-scrollbar {
             width: 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f1f1;
+            background: rgba(241, 241, 241, 0.2);
             border-radius: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #cbd5e0; /* gray-400 */
+            background: rgba(203, 213, 224, 0.5); /* gray-400 with opacity */
             border-radius: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #a0aec0; /* gray-500 */
+            background: rgba(160, 174, 192, 0.7); /* gray-500 with opacity */
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-emerald-50 to-emerald-100 min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-2xl p-6 md:p-8 w-full max-w-4xl flex flex-col md:flex-row gap-8">
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+    <!-- Main Application Container - Now almost fullscreen -->
+    <div id="app-container" class="relative bg-gray-100 rounded-xl shadow-2xl overflow-hidden flex items-center justify-center">
 
-        <!-- Left Section: Controls and Information -->
-        <div class="flex-1 space-y-6">
-            <h1 class="text-3xl font-bold text-gray-800 mb-4">Real-Time Object Detection</h1>
-            <p class="text-gray-600">
-                This application uses a pre-trained **MobileNetV2-SSD (coco-ssd)** model from TensorFlow.js to detect objects in images or a live webcam feed. All processing happens directly in your browser!
-            </p>
+        <!-- Main Display Area (Video/Image/Canvas) -->
+        <video id="video" playsinline autoplay muted class="hidden w-full h-full object-cover"></video>
+        <img id="imagePreview" class="hidden w-full h-full object-contain" alt="Image Preview">
+        <canvas id="canvas" class="absolute inset-0"></canvas>
+        <p id="placeholderText" class="text-gray-400 text-center absolute z-0 text-2xl">Upload an image or start your webcam</p>
 
-            <!-- Loading Indicator & Error Message -->
-            <div id="loading" class="hidden bg-emerald-100 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-md shadow-sm" role="alert">
+        <!-- Loading Indicator (Fullscreen Overlay) -->
+        <div id="loading" class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-70 text-white p-4 rounded-xl hidden z-40">
+            <div class="bg-emerald-100 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-md shadow-sm" role="alert">
                 <p class="font-bold" id="loadingMessage">Loading Model...</p>
                 <p id="loadingDetail">Please wait while the object detection model loads.</p>
             </div>
+        </div>
 
-            <!-- Input Options -->
-            <div class="space-y-4">
-                <div>
-                    <label for="imageUpload" class="block text-sm font-medium text-gray-700 mb-1">Upload an Image:</label>
-                    <input type="file" id="imageUpload" accept="image/*" class="w-full text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
-                </div>
-                <div class="flex items-center space-x-2">
-                    <button id="webcamButton" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
-                        <span id="webcamButtonText">Start Webcam</span>
-                    </button>
-                    <button id="clearButton" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                        Clear All
-                    </button>
-                </div>
-            </div>
+        <!-- Info Icon Button (Top Right) -->
+        <button id="infoButton" class="absolute top-4 right-4 z-30 bg-white bg-opacity-10 backdrop-blur-sm p-2 rounded-full shadow-lg text-gray-800 hover:bg-opacity-20 transition-all focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        </button>
 
-            <!-- Detection Results -->
-            <div id="results" class="space-y-3">
-                <h2 class="text-xl font-semibold text-gray-800">Detected Objects:</h2>
-                <div id="detectionList" class="max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-                    <!-- Detection results will be appended here -->
-                    <p class="text-gray-500" id="noDetectionsMessage">No objects detected yet.</p>
-                </div>
+        <!-- Info Modal (Hidden by default, centered fullscreen overlay) -->
+        <div id="infoModal" class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-70 hidden z-50 p-4">
+            <div class="bg-white rounded-xl shadow-2xl p-6 md:p-8 max-w-lg w-full text-center relative">
+                <button id="closeInfoModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+                <h1 class="text-3xl font-bold text-gray-800 mb-4">Real-Time Object Detection</h1>
+                <p class="text-gray-600">
+                    This application uses a pre-trained **MobileNetV2-SSD (coco-ssd)** model from TensorFlow.js to detect objects in images or a live webcam feed. All processing happens directly in your browser!
+                </p>
+                <p class="text-sm text-gray-500 mt-4">
+                    Developed by Your Name/AI Assistant
+                </p>
             </div>
         </div>
 
-        <!-- Right Section: Video/Image and Canvas -->
-        <div class="flex-1 relative flex items-center justify-center bg-gray-50 rounded-lg p-2 shadow-md">
-            <video id="video" playsinline autoplay muted class="hidden w-full h-auto rounded-lg shadow-md"></video>
-            <img id="imagePreview" class="hidden w-full h-auto object-contain rounded-lg shadow-md max-h-96" alt="Image Preview">
-            <canvas id="canvas" class="absolute top-2 left-2 w-[calc(100%-16px)] h-[calc(100%-16px)]"></canvas>
-            <p id="placeholderText" class="text-gray-400 text-center">Upload an image or start your webcam</p>
+        <!-- Detected Object Panel (Bottom Right with Transparency) -->
+        <div id="resultsPanel" class="absolute bottom-4 right-4 z-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg shadow-lg p-3 max-w-xs md:max-w-sm max-h-64 overflow-y-auto custom-scrollbar">
+            <h2 class="text-base font-semibold text-gray-800 mb-2">Detected Objects:</h2>
+            <div id="detectionList" class="space-y-1">
+                <p class="text-gray-500 text-sm" id="noDetectionsMessage">No objects detected yet.</p>
+            </div>
+        </div>
+
+        <!-- Detection Settings Panel (Bottom Left with Transparency - now includes all controls) -->
+        <div id="settingsPanel" class="absolute bottom-4 left-4 z-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg shadow-lg p-3 max-w-xs md:max-w-sm flex flex-col space-y-4">
+            <h3 class="text-base font-semibold text-gray-800">Detection Settings:</h3>
+            
+            <!-- Webcam/Clear Buttons (moved up) -->
+            <div class="flex items-center space-x-2">
+                <button id="webcamButton" class="flex-1 bg-emerald-600 bg-opacity-10 backdrop-blur-sm text-white font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                    <span id="webcamButtonText">Start Webcam</span>
+                </button>
+                <button id="clearButton" class="flex-1 bg-gray-300 bg-opacity-10 backdrop-blur-sm text-gray-800 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    Clear All
+                </button>
+            </div>
+            
+            <!-- Confidence Threshold -->
+            <div>
+                <label for="confidenceThreshold" class="block text-sm font-medium text-gray-700 mb-1">
+                    Confidence Threshold: <span id="confidenceValue" class="font-bold text-emerald-600">0.50</span>
+                </label>
+                <input type="range" id="confidenceThreshold" min="0.1" max="0.99" step="0.01" value="0.5"
+                       class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg">
+            </div>
+
+            <!-- Upload Image (moved to bottom, with opacity) -->
+            <div>
+                <label for="imageUpload" class="block text-sm font-medium text-gray-700 mb-1">Upload an Image:</label>
+                <input type="file" id="imageUpload" accept="image/*" class="w-full text-gray-700 bg-white bg-opacity-10 backdrop-blur-sm border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+            </div>
+            
+            <!-- FPS Counter (Integrated within settings panel) -->
+            <div id="fpsDisplay" class="text-gray-800 text-xs px-1 py-1 rounded-md hidden">FPS: 0.00</div>
         </div>
     </div>
 
@@ -116,9 +172,42 @@
         const detectionList = document.getElementById('detectionList');
         const noDetectionsMessage = document.getElementById('noDetectionsMessage');
 
+        // Elements for customization
+        const confidenceThresholdInput = document.getElementById('confidenceThreshold');
+        const confidenceValueDisplay = document.getElementById('confidenceValue');
+        const fpsDisplay = document.getElementById('fpsDisplay');
+        const resultsPanel = document.getElementById('resultsPanel');
+        const settingsPanel = document.getElementById('settingsPanel');
+
+        // New elements for Info Modal
+        const infoButton = document.getElementById('infoButton');
+        const infoModal = document.getElementById('infoModal');
+        const closeInfoModal = document.getElementById('closeInfoModal');
+
         let model;
         let isWebcamActive = false;
         let animationFrameId; // To store requestAnimationFrame ID for stopping the loop
+        let confidenceThreshold = parseFloat(confidenceThresholdInput.value); // Initial confidence threshold
+        let lastFrameTime = performance.now(); // For FPS calculation
+
+        // --- Event Listeners for Info Modal ---
+        infoButton.addEventListener('click', () => {
+            infoModal.classList.remove('hidden');
+        });
+
+        closeInfoModal.addEventListener('click', () => {
+            infoModal.classList.add('hidden');
+        });
+
+        // --- Event Listener for Confidence Threshold ---
+        confidenceThresholdInput.addEventListener('input', (event) => {
+            confidenceThreshold = parseFloat(event.target.value);
+            confidenceValueDisplay.textContent = confidenceThreshold.toFixed(2);
+            // If webcam is active, redraw immediately with new threshold
+            if (isWebcamActive && video.readyState === video.HAVE_ENOUGH_DATA) {
+                predictAndDraw(video);
+            }
+        });
 
         // --- Model Loading ---
         async function loadModel() {
@@ -130,7 +219,6 @@
 
             try {
                 // Load the COCO-SSD model from TensorFlow.js
-                // This model is optimized for various devices and tasks
                 model = await cocoSsd.load();
                 console.log('Model loaded successfully!');
                 loadingDiv.classList.add('hidden');
@@ -144,81 +232,93 @@
         }
 
         // --- Drawing Detections on Canvas ---
-        function drawDetections(predictions, sourceWidth, sourceHeight) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
+        function drawDetections(predictions, sourceElement) {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Adjust canvas size to match the source (image/video) aspect ratio
-            const aspectRatio = sourceWidth / sourceHeight;
-            let drawWidth = canvas.clientWidth;
-            let drawHeight = canvas.clientHeight;
+            const sourceWidth = sourceElement.naturalWidth || sourceElement.videoWidth; // Native width of the media
+            const sourceHeight = sourceElement.naturalHeight || sourceElement.videoHeight; // Native height of the media
 
-            // Ensure canvas maintains aspect ratio of the source image/video
-            // and fits within its container while preserving overall layout
-            if (drawWidth / drawHeight > aspectRatio) {
-                // If container is wider than source, scale by height
-                drawWidth = drawHeight * aspectRatio;
-            } else {
-                // If container is taller than source, scale by width
-                drawHeight = drawWidth / aspectRatio;
+            // Get the actual display size of the element being shown (video or image)
+            const mediaDisplayWidth = sourceElement.clientWidth;
+            const mediaDisplayHeight = sourceElement.clientHeight;
+
+            // Set canvas internal resolution to its *display* resolution for 1:1 pixel mapping
+            canvas.width = mediaDisplayWidth;
+            canvas.height = mediaDisplayHeight;
+
+            let scale;
+            let offsetX = 0;
+            let offsetY = 0;
+
+            // Calculate scaling and offsets based on how the media is displayed (object-cover or object-contain)
+            if (sourceElement.classList.contains('object-cover')) {
+                // object-cover: content fills the element's box, potentially clipping
+                scale = Math.max(mediaDisplayWidth / sourceWidth, mediaDisplayHeight / sourceHeight);
+            } else { // This handles imagePreview which is object-contain
+                // object-contain: content fits within the element's box, potentially letterboxing
+                scale = Math.min(mediaDisplayWidth / sourceWidth, mediaDisplayHeight / sourceHeight);
             }
 
-            // Set canvas drawing dimensions
-            canvas.width = drawWidth;
-            canvas.height = drawHeight;
+            const scaledContentWidth = sourceWidth * scale;
+            const scaledContentHeight = sourceHeight * scale;
 
-            // Adjust canvas display style to center it within its flex container
-            canvas.style.top = '50%';
-            canvas.style.left = '50%';
-            canvas.style.transform = 'translate(-50%, -50%)';
-            canvas.style.width = drawWidth + 'px';
-            canvas.style.height = drawHeight + 'px';
+            // Calculate offsets to center the scaled content
+            offsetX = (mediaDisplayWidth - scaledContentWidth) / 2;
+            offsetY = (mediaDisplayHeight - scaledContentHeight) / 2;
 
+            // Update detection list with dynamic bars
+            detectionList.innerHTML = '';
+            const filteredPredictions = predictions.filter(p => p.score >= confidenceThreshold);
 
-            // Display detections as a list
-            detectionList.innerHTML = ''; // Clear previous list
-            if (predictions.length === 0) {
+            if (filteredPredictions.length === 0) {
                 noDetectionsMessage.classList.remove('hidden');
             } else {
                 noDetectionsMessage.classList.add('hidden');
             }
 
-            predictions.forEach(prediction => {
-                // Draw bounding box
+            // Sort predictions by score in descending order for better visualization
+            filteredPredictions.sort((a, b) => b.score - a.score);
+
+            filteredPredictions.forEach(prediction => {
                 const [x, y, width, height] = prediction.bbox;
-                
-                // Scale bounding box coordinates to canvas dimensions
-                const scaledX = x * (drawWidth / sourceWidth);
-                const scaledY = y * (drawHeight / sourceHeight);
-                const scaledWidth = width * (drawWidth / sourceWidth);
-                const scaledHeight = height * (drawHeight / sourceHeight);
 
-                ctx.strokeStyle = '#EF4444'; // Red color (Tailwind red-500 equivalent)
+                // Apply scaling and offset to bounding box coordinates
+                const displayX = x * scale + offsetX;
+                const displayY = y * scale + offsetY;
+                const displayWidth = width * scale;
+                const displayHeight = height * scale;
+
+                ctx.strokeStyle = '#EF4444'; // Red
                 ctx.lineWidth = 2;
-                ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
+                ctx.strokeRect(displayX, displayY, displayWidth, displayHeight);
 
-                // Draw label background
                 ctx.fillStyle = '#EF4444'; // Red
                 const text = `${prediction.class} (${(prediction.score * 100).toFixed(1)}%)`;
-                
-                // Set font before measuring text
-                ctx.font = '12px Inter';
+                ctx.font = '12px Inter'; // Ensure font is set before measureText
                 const textWidth = ctx.measureText(text).width;
-                const textHeight = 16; // Approximate font height
+                const textHeight = 16; 
 
-                ctx.fillRect(scaledX, scaledY - textHeight - 4, textWidth + 8, textHeight + 4);
-
-                // Draw label text
+                // Adjust label position to be just above the box
+                ctx.fillRect(displayX, displayY - textHeight - 4, textWidth + 8, textHeight + 4);
                 ctx.fillStyle = '#FFFFFF'; // White
-                ctx.fillText(text, scaledX + 4, scaledY - 6);
+                ctx.fillText(text, displayX + 4, displayY - 6);
 
-                // Add to detection list
-                const card = document.createElement('div');
-                card.className = 'detection-card';
-                card.innerHTML = `
-                    <span class="font-medium text-gray-800">${prediction.class}</span>
-                    <span class="text-sm font-semibold text-emerald-600">${(prediction.score * 100).toFixed(1)}%</span>
-                `;
-                detectionList.appendChild(card);
+                // Add to detection list as a bar
+                const barContainer = document.createElement('div');
+                barContainer.className = 'detection-bar-container';
+                
+                const bar = document.createElement('div');
+                bar.className = 'detection-bar';
+                bar.style.width = `${(prediction.score * 100).toFixed(1)}%`;
+                barContainer.appendChild(bar);
+
+                const label = document.createElement('span');
+                label.className = 'detection-bar-label';
+                label.textContent = `${prediction.class}: ${(prediction.score * 100).toFixed(1)}%`;
+                barContainer.appendChild(label);
+
+                detectionList.appendChild(barContainer);
             });
         }
 
@@ -229,60 +329,44 @@
                 return;
             }
 
-            // Perform detection
-            const predictions = await model.detect(sourceElement);
-            
-            // Get source dimensions
-            const sourceWidth = sourceElement.naturalWidth || sourceElement.videoWidth;
-            const sourceHeight = sourceElement.naturalHeight || sourceElement.videoHeight;
-
-            drawDetections(predictions, sourceWidth, sourceHeight);
+            const predictions = await model.detect(sourceElement, confidenceThreshold);
+            drawDetections(predictions, sourceElement);
         }
 
         // --- Webcam Handling ---
         async function startWebcam() {
             if (!model) {
-                // Model must be loaded before starting webcam
                 loadingMessage.textContent = 'Starting webcam... Model not loaded, attempting to load.';
                 loadingDiv.classList.remove('hidden');
                 await loadModel();
-                if (!model) return; // If model failed to load, exit
+                if (!model) return;
             }
 
-            // Hide other elements and show video
             imagePreview.classList.add('hidden');
             placeholderText.classList.add('hidden');
             video.classList.remove('hidden');
+            fpsDisplay.classList.remove('hidden');
 
             try {
-                // Request media access, preferring 'environment' (rear) camera on mobile
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 video.srcObject = stream;
                 
-                // When video metadata is loaded and video starts playing
                 video.onloadedmetadata = () => {
                     video.play();
                     isWebcamActive = true;
                     webcamButtonText.textContent = 'Stop Webcam';
                     console.log('Webcam started. Video dimensions:', video.videoWidth, 'x', video.videoHeight);
                     
-                    // Initial canvas sizing to match video element's displayed size
-                    // This will be refined by drawDetections for aspect ratio
-                    canvas.style.width = video.clientWidth + 'px';
-                    canvas.style.height = video.clientHeight + 'px';
-                    canvas.width = video.videoWidth; // Set internal canvas resolution to video stream resolution
-                    canvas.height = video.videoHeight;
-
-                    detectFromWebcam(); // Start continuous detection
+                    lastFrameTime = performance.now();
+                    detectFromWebcam();
                 };
             } catch (error) {
                 console.error('Error accessing webcam:', error);
-                // Provide user-friendly error message in the UI instead of a simple alert
                 loadingMessage.textContent = 'Webcam Access Denied/Error!';
                 loadingDetail.textContent = 'Please ensure you have a camera and grant permissions to use it. Error: ' + error.message;
                 loadingDiv.classList.remove('hidden', 'bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
                 loadingDiv.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
-                stopWebcam(); // Attempt to stop in case of partial setup
+                stopWebcam();
             }
         }
 
@@ -299,22 +383,22 @@
             isWebcamActive = false;
             webcamButtonText.textContent = 'Start Webcam';
             video.classList.add('hidden');
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+            fpsDisplay.classList.add('hidden');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             clearResults();
             placeholderText.classList.remove('hidden');
             
-            // Reset canvas position and size to default placeholder state
-            canvas.style.top = '2px';
-            canvas.style.left = '2px';
-            canvas.style.transform = 'none';
-            canvas.style.width = 'calc(100% - 16px)';
-            canvas.style.height = 'calc(100% - 16px)';
-            canvas.width = 0; // Reset internal canvas resolution
+            canvas.width = 0;
             canvas.height = 0;
         }
 
         function detectFromWebcam() {
-            // Only perform detection if the video is ready and playing
+            const now = performance.now();
+            const delta = now - lastFrameTime;
+            lastFrameTime = now;
+            const fps = 1000 / delta;
+            fpsDisplay.textContent = `FPS: ${fps.toFixed(2)}`;
+
             if (video.readyState === video.HAVE_ENOUGH_DATA && isWebcamActive) {
                 predictAndDraw(video);
             }
@@ -323,7 +407,7 @@
 
         // --- Image Upload Handling ---
         imageUpload.addEventListener('change', async (event) => {
-            stopWebcam(); // Stop webcam if active
+            stopWebcam();
             clearResults();
 
             const file = event.target.files[0];
@@ -332,31 +416,25 @@
                 reader.onload = async (e) => {
                     imagePreview.src = e.target.result;
                     imagePreview.onload = async () => {
-                        // Hide placeholder and show image
                         placeholderText.classList.add('hidden');
                         imagePreview.classList.remove('hidden');
                         
-                        // Adjust canvas size to match image display size for overlay
-                        canvas.style.width = imagePreview.clientWidth + 'px';
-                        canvas.style.height = imagePreview.clientHeight + 'px';
-                        // Set internal canvas resolution to image natural resolution
-                        canvas.width = imagePreview.naturalWidth;
-                        canvas.height = imagePreview.naturalHeight;
-                        
-                        // Perform detection on the uploaded image
                         await predictAndDraw(imagePreview);
                     };
                     imagePreview.onerror = () => {
                         console.error('Error loading image file.');
-                        alert('Failed to load image. Please try a different file.'); // Simple alert for image load error
-                        clearButton.click(); // Reset UI
+                        loadingMessage.textContent = 'Image Load Error!';
+                        loadingDetail.textContent = 'Failed to load the selected image. Please try a different file.';
+                        loadingDiv.classList.remove('hidden', 'bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+                        loadingDiv.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+                        clearButton.click();
                     };
                 };
                 reader.readAsDataURL(file);
             } else {
                 imagePreview.classList.add('hidden');
                 placeholderText.classList.remove('hidden');
-                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
         });
 
@@ -371,13 +449,13 @@
 
         clearButton.addEventListener('click', () => {
             stopWebcam();
-            imageUpload.value = ''; // Clear file input
+            imageUpload.value = '';
+            imagePreview.src = '';
             imagePreview.classList.add('hidden');
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             clearResults();
             placeholderText.classList.remove('hidden');
             
-            // Re-hide any model loading/error messages
             loadingDiv.classList.add('hidden');
             loadingDiv.classList.remove('bg-red-100', 'border-red-500', 'text-red-700');
             loadingDiv.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
@@ -389,7 +467,7 @@
         }
 
         // --- Initial Load ---
-        window.onload = loadModel; // Load model when the page loads
+        window.onload = loadModel;
     </script>
 </body>
 </html>
