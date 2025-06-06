@@ -26,17 +26,16 @@
         }
         /* Style for the detection progress bars */
         .detection-bar-container {
-            background-color: rgba(243, 244, 246, 0.2); /* gray-100 with some opacity */
+            background-color: rgba(243, 244, 246, 0.10); /* gray-100 with 10% opacity */
             border-radius: 0.25rem; /* rounded-sm */
             overflow: hidden;
-            height: 24px; /* Fixed height for bars */
+            height: 6px; /* Very thin height for bars */
             margin-bottom: 0.5rem;
             position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.75rem; /* text-xs */
-            color: #1f2937; /* gray-800 */
+            /* font-size and color for label removed as text is removed */
         }
         .detection-bar {
             background-color: #10b981; /* emerald-500 */
@@ -45,6 +44,8 @@
             top: 0;
             left: 0;
         }
+        /* detection-bar-label styles are largely irrelevant now that text is removed,
+           but kept for clarity if text were to be re-added or if any remnants are styled */
         .detection-bar-label {
             position: absolute;
             z-index: 1; /* Ensure text is above the bar */
@@ -52,6 +53,8 @@
             font-weight: 500; /* font-medium */
             mix-blend-mode: difference; /* Ensures text is visible on both light/dark parts of bar */
             padding: 0 0.5rem; /* px-2 */
+            /* Display none to explicitly hide if JS doesn't remove it */
+            display: none;
         }
         /* Custom scrollbar for detection list */
         .custom-scrollbar::-webkit-scrollbar {
@@ -123,10 +126,10 @@
             
             <!-- Webcam/Clear Buttons (moved up) -->
             <div class="flex items-center space-x-2">
-                <button id="webcamButton" class="flex-1 bg-emerald-600 bg-opacity-10 backdrop-blur-sm text-white font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                <button id="webcamButton" class="flex-1 bg-emerald-600 bg-opacity-10 backdrop-blur-sm text-emerald-900 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                     <span id="webcamButtonText">Start Webcam</span>
                 </button>
-                <button id="clearButton" class="flex-1 bg-gray-300 bg-opacity-10 backdrop-blur-sm text-gray-800 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                <button id="clearButton" class="flex-1 bg-gray-700 bg-opacity-10 backdrop-blur-sm text-white font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
                     Clear All
                 </button>
             </div>
@@ -222,7 +225,8 @@
                 model = await cocoSsd.load();
                 console.log('Model loaded successfully!');
                 loadingDiv.classList.add('hidden');
-            } catch (error) {
+            }
+            catch (error) {
                 console.error('Failed to load model:', error);
                 loadingMessage.textContent = 'Error Loading Model!';
                 loadingDetail.textContent = 'Could not load the object detection model. Check your internet connection or try refreshing the page. Details: ' + error.message;
@@ -313,10 +317,11 @@
                 bar.style.width = `${(prediction.score * 100).toFixed(1)}%`;
                 barContainer.appendChild(bar);
 
-                const label = document.createElement('span');
-                label.className = 'detection-bar-label';
-                label.textContent = `${prediction.class}: ${(prediction.score * 100).toFixed(1)}%`;
-                barContainer.appendChild(label);
+                // Removed the label setting for the detection bar.
+                // const label = document.createElement('span');
+                // label.className = 'detection-bar-label';
+                // label.textContent = `${prediction.class}: ${(prediction.score * 100).toFixed(1)}%`;
+                // barContainer.appendChild(label);
 
                 detectionList.appendChild(barContainer);
             });
