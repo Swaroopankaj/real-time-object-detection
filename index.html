@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Object Detection</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #video, #imagePreview, #canvas {
+            border-radius: 0.75rem; /* rounded-lg */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* shadow-md */
+        }
+        /* Style for the detection result cards */
+        .detection-card {
+            background-color: #f3f4f6; /* gray-100 */
+            border-left: 4px solid #10b981; /* emerald-500 */
+            border-radius: 0.5rem; /* rounded-md */
+            padding: 0.75rem 1rem; /* p-3 */
+            margin-bottom: 0.5rem; /* mb-2 */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        /* Custom scrollbar for detection list */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e0; /* gray-400 */
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0; /* gray-500 */
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-emerald-50 to-emerald-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl p-6 md:p-8 w-full max-w-4xl flex flex-col md:flex-row gap-8">
+
+        <!-- Left Section: Controls and Information -->
+        <div class="flex-1 space-y-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-4">Real-Time Object Detection</h1>
+            <p class="text-gray-600">
+                This application uses a pre-trained **MobileNetV2-SSD (coco-ssd)** model from TensorFlow.js to detect objects in images or a live webcam feed. All processing happens directly in your browser!
+            </p>
+
+            <!-- Loading Indicator & Error Message -->
+            <div id="loading" class="hidden bg-emerald-100 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-md shadow-sm" role="alert">
+                <p class="font-bold" id="loadingMessage">Loading Model...</p>
+                <p id="loadingDetail">Please wait while the object detection model loads.</p>
+            </div>
+
+            <!-- Input Options -->
+            <div class="space-y-4">
+                <div>
+                    <label for="imageUpload" class="block text-sm font-medium text-gray-700 mb-1">Upload an Image:</label>
+                    <input type="file" id="imageUpload" accept="image/*" class="w-full text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button id="webcamButton" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                        <span id="webcamButtonText">Start Webcam</span>
+                    </button>
+                    <button id="clearButton" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                        Clear All
+                    </button>
+                </div>
+            </div>
+
+            <!-- Detection Results -->
+            <div id="results" class="space-y-3">
+                <h2 class="text-xl font-semibold text-gray-800">Detected Objects:</h2>
+                <div id="detectionList" class="max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                    <!-- Detection results will be appended here -->
+                    <p class="text-gray-500" id="noDetectionsMessage">No objects detected yet.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Section: Video/Image and Canvas -->
+        <div class="flex-1 relative flex items-center justify-center bg-gray-50 rounded-lg p-2 shadow-md">
+            <video id="video" playsinline autoplay muted class="hidden w-full h-auto rounded-lg shadow-md"></video>
+            <img id="imagePreview" class="hidden w-full h-auto object-contain rounded-lg shadow-md max-h-96" alt="Image Preview">
+            <canvas id="canvas" class="absolute top-2 left-2 w-[calc(100%-16px)] h-[calc(100%-16px)]"></canvas>
+            <p id="placeholderText" class="text-gray-400 text-center">Upload an image or start your webcam</p>
+        </div>
+    </div>
+
+    <!-- TensorFlow.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <!-- COCO-SSD Model -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+    <script>
+        const video = document.getElementById('video');
+        const imageUpload = document.getElementById('imageUpload');
+        const imagePreview = document.getElementById('imagePreview');
+        const webcamButton = document.getElementById('webcamButton');
+        const webcamButtonText = document.getElementById('webcamButtonText');
+        const clearButton = document.getElementById('clearButton');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const loadingDiv = document.getElementById('loading');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const loadingDetail = document.getElementById('loadingDetail');
+        const placeholderText = document.getElementById('placeholderText');
+        const detectionList = document.getElementById('detectionList');
+        const noDetectionsMessage = document.getElementById('noDetectionsMessage');
+
+        let model;
+        let isWebcamActive = false;
+        let animationFrameId; // To store requestAnimationFrame ID for stopping the loop
+
+        // --- Model Loading ---
+        async function loadModel() {
+            loadingDiv.classList.remove('hidden');
+            loadingMessage.textContent = 'Loading Model...';
+            loadingDetail.textContent = 'Please wait while the object detection model loads.';
+            loadingDiv.classList.remove('bg-red-100', 'border-red-500', 'text-red-700'); // Clear any previous error styles
+            loadingDiv.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+
+            try {
+                // Load the COCO-SSD model from TensorFlow.js
+                // This model is optimized for various devices and tasks
+                model = await cocoSsd.load();
+                console.log('Model loaded successfully!');
+                loadingDiv.classList.add('hidden');
+            } catch (error) {
+                console.error('Failed to load model:', error);
+                loadingMessage.textContent = 'Error Loading Model!';
+                loadingDetail.textContent = 'Could not load the object detection model. Check your internet connection or try refreshing the page. Details: ' + error.message;
+                loadingDiv.classList.remove('bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+                loadingDiv.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+            }
+        }
+
+        // --- Drawing Detections on Canvas ---
+        function drawDetections(predictions, sourceWidth, sourceHeight) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
+
+            // Adjust canvas size to match the source (image/video) aspect ratio
+            const aspectRatio = sourceWidth / sourceHeight;
+            let drawWidth = canvas.clientWidth;
+            let drawHeight = canvas.clientHeight;
+
+            // Ensure canvas maintains aspect ratio of the source image/video
+            // and fits within its container while preserving overall layout
+            if (drawWidth / drawHeight > aspectRatio) {
+                // If container is wider than source, scale by height
+                drawWidth = drawHeight * aspectRatio;
+            } else {
+                // If container is taller than source, scale by width
+                drawHeight = drawWidth / aspectRatio;
+            }
+
+            // Set canvas drawing dimensions
+            canvas.width = drawWidth;
+            canvas.height = drawHeight;
+
+            // Adjust canvas display style to center it within its flex container
+            canvas.style.top = '50%';
+            canvas.style.left = '50%';
+            canvas.style.transform = 'translate(-50%, -50%)';
+            canvas.style.width = drawWidth + 'px';
+            canvas.style.height = drawHeight + 'px';
+
+
+            // Display detections as a list
+            detectionList.innerHTML = ''; // Clear previous list
+            if (predictions.length === 0) {
+                noDetectionsMessage.classList.remove('hidden');
+            } else {
+                noDetectionsMessage.classList.add('hidden');
+            }
+
+            predictions.forEach(prediction => {
+                // Draw bounding box
+                const [x, y, width, height] = prediction.bbox;
+                
+                // Scale bounding box coordinates to canvas dimensions
+                const scaledX = x * (drawWidth / sourceWidth);
+                const scaledY = y * (drawHeight / sourceHeight);
+                const scaledWidth = width * (drawWidth / sourceWidth);
+                const scaledHeight = height * (drawHeight / sourceHeight);
+
+                ctx.strokeStyle = '#EF4444'; // Red color (Tailwind red-500 equivalent)
+                ctx.lineWidth = 2;
+                ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
+
+                // Draw label background
+                ctx.fillStyle = '#EF4444'; // Red
+                const text = `${prediction.class} (${(prediction.score * 100).toFixed(1)}%)`;
+                
+                // Set font before measuring text
+                ctx.font = '12px Inter';
+                const textWidth = ctx.measureText(text).width;
+                const textHeight = 16; // Approximate font height
+
+                ctx.fillRect(scaledX, scaledY - textHeight - 4, textWidth + 8, textHeight + 4);
+
+                // Draw label text
+                ctx.fillStyle = '#FFFFFF'; // White
+                ctx.fillText(text, scaledX + 4, scaledY - 6);
+
+                // Add to detection list
+                const card = document.createElement('div');
+                card.className = 'detection-card';
+                card.innerHTML = `
+                    <span class="font-medium text-gray-800">${prediction.class}</span>
+                    <span class="text-sm font-semibold text-emerald-600">${(prediction.score * 100).toFixed(1)}%</span>
+                `;
+                detectionList.appendChild(card);
+            });
+        }
+
+        // --- Perform Prediction and Draw ---
+        async function predictAndDraw(sourceElement) {
+            if (!model) {
+                console.warn('Model not loaded yet. Cannot perform prediction.');
+                return;
+            }
+
+            // Perform detection
+            const predictions = await model.detect(sourceElement);
+            
+            // Get source dimensions
+            const sourceWidth = sourceElement.naturalWidth || sourceElement.videoWidth;
+            const sourceHeight = sourceElement.naturalHeight || sourceElement.videoHeight;
+
+            drawDetections(predictions, sourceWidth, sourceHeight);
+        }
+
+        // --- Webcam Handling ---
+        async function startWebcam() {
+            if (!model) {
+                // Model must be loaded before starting webcam
+                loadingMessage.textContent = 'Starting webcam... Model not loaded, attempting to load.';
+                loadingDiv.classList.remove('hidden');
+                await loadModel();
+                if (!model) return; // If model failed to load, exit
+            }
+
+            // Hide other elements and show video
+            imagePreview.classList.add('hidden');
+            placeholderText.classList.add('hidden');
+            video.classList.remove('hidden');
+
+            try {
+                // Request media access, preferring 'environment' (rear) camera on mobile
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                video.srcObject = stream;
+                
+                // When video metadata is loaded and video starts playing
+                video.onloadedmetadata = () => {
+                    video.play();
+                    isWebcamActive = true;
+                    webcamButtonText.textContent = 'Stop Webcam';
+                    console.log('Webcam started. Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    
+                    // Initial canvas sizing to match video element's displayed size
+                    // This will be refined by drawDetections for aspect ratio
+                    canvas.style.width = video.clientWidth + 'px';
+                    canvas.style.height = video.clientHeight + 'px';
+                    canvas.width = video.videoWidth; // Set internal canvas resolution to video stream resolution
+                    canvas.height = video.videoHeight;
+
+                    detectFromWebcam(); // Start continuous detection
+                };
+            } catch (error) {
+                console.error('Error accessing webcam:', error);
+                // Provide user-friendly error message in the UI instead of a simple alert
+                loadingMessage.textContent = 'Webcam Access Denied/Error!';
+                loadingDetail.textContent = 'Please ensure you have a camera and grant permissions to use it. Error: ' + error.message;
+                loadingDiv.classList.remove('hidden', 'bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+                loadingDiv.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+                stopWebcam(); // Attempt to stop in case of partial setup
+            }
+        }
+
+        function stopWebcam() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                console.log('Webcam stopped.');
+            }
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                console.log('Animation frame loop cancelled.');
+            }
+            isWebcamActive = false;
+            webcamButtonText.textContent = 'Start Webcam';
+            video.classList.add('hidden');
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+            clearResults();
+            placeholderText.classList.remove('hidden');
+            
+            // Reset canvas position and size to default placeholder state
+            canvas.style.top = '2px';
+            canvas.style.left = '2px';
+            canvas.style.transform = 'none';
+            canvas.style.width = 'calc(100% - 16px)';
+            canvas.style.height = 'calc(100% - 16px)';
+            canvas.width = 0; // Reset internal canvas resolution
+            canvas.height = 0;
+        }
+
+        function detectFromWebcam() {
+            // Only perform detection if the video is ready and playing
+            if (video.readyState === video.HAVE_ENOUGH_DATA && isWebcamActive) {
+                predictAndDraw(video);
+            }
+            animationFrameId = requestAnimationFrame(detectFromWebcam);
+        }
+
+        // --- Image Upload Handling ---
+        imageUpload.addEventListener('change', async (event) => {
+            stopWebcam(); // Stop webcam if active
+            clearResults();
+
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    imagePreview.src = e.target.result;
+                    imagePreview.onload = async () => {
+                        // Hide placeholder and show image
+                        placeholderText.classList.add('hidden');
+                        imagePreview.classList.remove('hidden');
+                        
+                        // Adjust canvas size to match image display size for overlay
+                        canvas.style.width = imagePreview.clientWidth + 'px';
+                        canvas.style.height = imagePreview.clientHeight + 'px';
+                        // Set internal canvas resolution to image natural resolution
+                        canvas.width = imagePreview.naturalWidth;
+                        canvas.height = imagePreview.naturalHeight;
+                        
+                        // Perform detection on the uploaded image
+                        await predictAndDraw(imagePreview);
+                    };
+                    imagePreview.onerror = () => {
+                        console.error('Error loading image file.');
+                        alert('Failed to load image. Please try a different file.'); // Simple alert for image load error
+                        clearButton.click(); // Reset UI
+                    };
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.classList.add('hidden');
+                placeholderText.classList.remove('hidden');
+                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+            }
+        });
+
+        // --- Button Event Listeners ---
+        webcamButton.addEventListener('click', () => {
+            if (isWebcamActive) {
+                stopWebcam();
+            } else {
+                startWebcam();
+            }
+        });
+
+        clearButton.addEventListener('click', () => {
+            stopWebcam();
+            imageUpload.value = ''; // Clear file input
+            imagePreview.classList.add('hidden');
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+            clearResults();
+            placeholderText.classList.remove('hidden');
+            
+            // Re-hide any model loading/error messages
+            loadingDiv.classList.add('hidden');
+            loadingDiv.classList.remove('bg-red-100', 'border-red-500', 'text-red-700');
+            loadingDiv.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+        });
+
+        function clearResults() {
+            detectionList.innerHTML = '';
+            noDetectionsMessage.classList.remove('hidden');
+        }
+
+        // --- Initial Load ---
+        window.onload = loadModel; // Load model when the page loads
+    </script>
+</body>
+</html>
