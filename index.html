@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time Object Detection</title>
+    <title>TenFlo Classifier</title>
     <!-- Tailwind CSS CDN for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter Font -->
@@ -26,7 +26,7 @@
         }
         /* Style for the detection progress bars */
         .detection-bar-container {
-            background-color: rgba(243, 244, 246, 0.10); /* gray-100 with 10% opacity */
+            background-color: rgba(243, 244, 246, 0.10); /* Fallback, adjusted by JS */
             border-radius: 0.25rem; /* rounded-sm */
             overflow: hidden;
             height: 6px; /* Very thin height for bars */
@@ -35,17 +35,16 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* font-size and color for label removed as text is removed */
         }
         .detection-bar {
-            background-color: #10b981; /* emerald-500 */
+            background-color: #10b981; /* emerald-500, adjusted by JS */
             height: 100%;
             position: absolute;
             top: 0;
             left: 0;
         }
         /* detection-bar-label styles are largely irrelevant now that text is removed,
-           but kept for clarity if text were to be re-added or if any remnants are styled */
+            but kept for clarity if text were to be re-added or if any remnants are styled */
         .detection-bar-label {
             position: absolute;
             z-index: 1; /* Ensure text is above the bar */
@@ -56,26 +55,37 @@
             /* Display none to explicitly hide if JS doesn't remove it */
             display: none;
         }
-        /* Custom scrollbar for detection list */
+        /* Custom scrollbar for detection list - initial dark mode styles */
         .custom-scrollbar::-webkit-scrollbar {
             width: 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: rgba(241, 241, 241, 0.2);
+            background: rgba(41, 41, 41, 0.2); /* Darker track */
             border-radius: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(203, 213, 224, 0.5); /* gray-400 with opacity */
+            background: rgba(100, 100, 100, 0.5); /* Darker thumb */
             border-radius: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(160, 174, 192, 0.7); /* gray-500 with opacity */
+            background: rgba(130, 130, 130, 0.7); /* Darker hover thumb */
+            border-radius: 4px;
+        }
+
+        /* Initial dark mode checkerboard background */
+        .checkerboard-bg {
+            background-image: linear-gradient(45deg, #333 25%, transparent 25%),
+                              linear-gradient(-45deg, #333 25%, transparent 25%),
+                              linear-gradient(45deg, transparent 75%, #333 75%),
+                              linear-gradient(-45deg, transparent 75%, #333 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+<body class="bg-gradient-to-br from-gray-900 to-gray-950 flex items-center justify-center p-4 text-gray-100">
     <!-- Main Application Container - Now almost fullscreen -->
-    <div id="app-container" class="relative bg-gray-100 rounded-xl shadow-2xl overflow-hidden flex items-center justify-center">
+    <div id="app-container" class="relative bg-gray-800 rounded-xl shadow-2xl overflow-hidden flex items-center justify-center">
 
         <!-- Main Display Area (Video/Image/Canvas) -->
         <video id="video" playsinline autoplay muted class="hidden w-full h-full object-cover"></video>
@@ -85,72 +95,81 @@
 
         <!-- Loading Indicator (Fullscreen Overlay) -->
         <div id="loading" class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-70 text-white p-4 rounded-xl hidden z-40">
-            <div class="bg-emerald-100 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-md shadow-sm" role="alert">
+            <div class="bg-indigo-700 border-l-4 border-indigo-500 text-indigo-100 p-4 rounded-md shadow-sm" role="alert">
                 <p class="font-bold" id="loadingMessage">Loading Model...</p>
                 <p id="loadingDetail">Please wait while the object detection model loads.</p>
             </div>
         </div>
 
-        <!-- Info Icon Button (Top Right) -->
-        <button id="infoButton" class="absolute top-4 right-4 z-30 bg-white bg-opacity-10 backdrop-blur-sm p-2 rounded-full shadow-lg text-gray-800 hover:bg-opacity-20 transition-all focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+        <!-- Info Icon Button (Bottom Right) -->
+        <button id="infoButton" class="absolute bottom-4 right-4 z-30 bg-gray-700 bg-opacity-50 backdrop-blur-sm p-2 rounded-full shadow-lg text-gray-100 hover:bg-opacity-70 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         </button>
 
         <!-- Info Modal (Hidden by default, centered fullscreen overlay) -->
         <div id="infoModal" class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-70 hidden z-50 p-4">
-            <div class="bg-white rounded-xl shadow-2xl p-6 md:p-8 max-w-lg w-full text-center relative">
-                <button id="closeInfoModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+            <div class="bg-gray-800 rounded-xl shadow-2xl p-6 md:p-8 max-w-lg w-full text-center relative border border-gray-600">
+                <button id="closeInfoModal" class="absolute top-3 right-3 text-gray-400 hover:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
-                <h1 class="text-3xl font-bold text-gray-800 mb-4">Real-Time Object Detection</h1>
-                <p class="text-gray-600">
+                <h1 class="text-3xl font-bold text-gray-100 mb-4">TenFlo Classifier</h1>
+                <p class="text-gray-300">
                     This application uses a pre-trained **MobileNetV2-SSD (coco-ssd)** model from TensorFlow.js to detect objects in images or a live webcam feed. All processing happens directly in your browser!
                 </p>
-                <p class="text-sm text-gray-500 mt-4">
+                <p class="text-sm text-gray-400 mt-4">
                     Developed by Pankaj Raghuvanshi
                 </p>
             </div>
         </div>
 
         <!-- Detected Object Panel (Bottom Right with Transparency) -->
-        <div id="resultsPanel" class="absolute bottom-4 right-4 z-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg shadow-lg p-3 max-w-xs md:max-w-sm max-h-64 overflow-y-auto custom-scrollbar">
-            <h2 class="text-base font-semibold text-gray-800 mb-2">Detected Objects:</h2>
+        <div id="resultsPanel" class="absolute bottom-4 right-4 z-20 bg-gray-700 bg-opacity-30 backdrop-blur-sm rounded-lg shadow-lg p-3 max-w-xs md:max-w-sm max-h-64 overflow-y-auto custom-scrollbar text-gray-100">
+            <h2 class="text-base font-semibold text-gray-100 mb-2">Detected Objects:</h2>
             <div id="detectionList" class="space-y-1">
-                <p class="text-gray-500 text-sm" id="noDetectionsMessage">No objects detected yet.</p>
+                <p class="text-gray-300 text-sm" id="noDetectionsMessage">No objects detected yet.</p>
             </div>
         </div>
 
         <!-- Detection Settings Panel (Bottom Left with Transparency - now includes all controls) -->
-        <div id="settingsPanel" class="absolute bottom-4 left-4 z-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg shadow-lg p-3 max-w-xs md:max-w-sm flex flex-col space-y-4">
-            <h3 class="text-base font-semibold text-gray-800">Detection Settings:</h3>
+        <div id="settingsPanel" class="absolute bottom-4 left-4 z-20 bg-gray-700 bg-opacity-30 backdrop-blur-sm rounded-lg shadow-lg p-3 max-w-xs md:max-w-sm flex flex-col space-y-4 text-gray-100">
+            <h3 class="text-base font-semibold text-gray-100">Detection Settings:</h3>
             
             <!-- Webcam/Clear Buttons (moved up) -->
             <div class="flex items-center space-x-2">
-                <button id="webcamButton" class="flex-1 bg-emerald-600 bg-opacity-10 backdrop-blur-sm text-emerald-900 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                <button id="webcamButton" class="flex-1 bg-emerald-700 bg-opacity-30 backdrop-blur-sm text-emerald-100 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2">
                     <span id="webcamButtonText">Start Webcam</span>
                 </button>
-                <button id="clearButton" class="flex-1 bg-gray-700 bg-opacity-10 backdrop-blur-sm text-white font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-20 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                <button id="clearButton" class="flex-1 bg-gray-600 bg-opacity-30 backdrop-blur-sm text-gray-100 font-semibold py-2 px-4 rounded-md shadow-md transition-all duration-300 hover:bg-opacity-40 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2">
                     Clear All
                 </button>
             </div>
             
             <!-- Confidence Threshold -->
             <div>
-                <label for="confidenceThreshold" class="block text-sm font-medium text-gray-700 mb-1">
-                    Confidence Threshold: <span id="confidenceValue" class="font-bold text-emerald-600">0.50</span>
+                <label for="confidenceThreshold" class="block text-sm font-medium text-gray-200 mb-1">
+                    Confidence Threshold: <span id="confidenceValue" class="font-bold text-emerald-400">0.50</span>
                 </label>
                 <input type="range" id="confidenceThreshold" min="0.1" max="0.99" step="0.01" value="0.5"
-                       class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg">
+                       class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer range-lg">
             </div>
 
             <!-- Upload Image (moved to bottom, with opacity) -->
             <div>
-                <label for="imageUpload" class="block text-sm font-medium text-gray-700 mb-1">Upload an Image:</label>
-                <input type="file" id="imageUpload" accept="image/*" class="w-full text-gray-700 bg-white bg-opacity-10 backdrop-blur-sm border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                <label for="imageUpload" class="block text-sm font-medium text-gray-200 mb-1">Upload an Image:</label>
+                <input type="file" id="imageUpload" accept="image/*" class="w-full text-gray-200 bg-gray-800 bg-opacity-20 backdrop-blur-sm border border-gray-500 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-400 focus:border-emerald-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-700 file:text-white hover:file:bg-purple-600">
             </div>
             
             <!-- FPS Counter (Integrated within settings panel) -->
-            <div id="fpsDisplay" class="text-gray-800 text-xs px-1 py-1 rounded-md hidden">FPS: 0.00</div>
+            <div id="fpsDisplay" class="text-gray-200 text-xs px-1 py-1 rounded-md hidden">FPS: 0.00</div>
+
+            <!-- Dark Mode Toggle -->
+            <div class="flex items-center justify-between pt-2 border-t border-gray-500">
+                <label for="darkModeToggle" class="text-sm font-medium text-gray-200 cursor-pointer">Dark Mode</label>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="darkModeToggle" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-600 rounded-full peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
         </div>
     </div>
 
@@ -187,11 +206,200 @@
         const infoModal = document.getElementById('infoModal');
         const closeInfoModal = document.getElementById('closeInfoModal');
 
+        // Dark Mode Toggle
+        const darkModeToggle = document.getElementById('darkModeToggle');
+
         let model;
         let isWebcamActive = false;
         let animationFrameId; // To store requestAnimationFrame ID for stopping the loop
         let confidenceThreshold = parseFloat(confidenceThresholdInput.value); // Initial confidence threshold
         let lastFrameTime = performance.now(); // For FPS calculation
+
+        // --- Theme Application Function ---
+        function applyThemeClasses(isDarkMode) {
+            // Body background and text color
+            document.body.classList.toggle('from-gray-900', isDarkMode);
+            document.body.classList.toggle('to-gray-950', isDarkMode);
+            document.body.classList.toggle('text-gray-100', isDarkMode);
+            document.body.classList.toggle('from-gray-50', !isDarkMode);
+            document.body.classList.toggle('to-gray-100', !isDarkMode);
+            document.body.classList.toggle('text-gray-800', !isDarkMode);
+
+            // App Container
+            document.getElementById('app-container').classList.toggle('bg-gray-800', isDarkMode);
+            document.getElementById('app-container').classList.toggle('bg-opacity-90', isDarkMode);
+            document.getElementById('app-container').classList.toggle('bg-gray-100', !isDarkMode);
+            // document.getElementById('app-container').classList.toggle('bg-opacity-90', !isDarkMode); // Removed, as bg-gray-100 usually doesn't need opacity.
+
+            // Panels (resultsPanel, settingsPanel)
+            [resultsPanel, settingsPanel].forEach(panel => {
+                panel.classList.toggle('bg-gray-700', isDarkMode);
+                panel.classList.toggle('bg-opacity-30', isDarkMode);
+                panel.classList.toggle('text-gray-100', isDarkMode);
+                panel.classList.toggle('bg-white', !isDarkMode);
+                panel.classList.toggle('bg-opacity-10', !isDarkMode);
+                panel.classList.toggle('text-gray-800', !isDarkMode);
+            });
+
+            // Info Button
+            infoButton.classList.toggle('bg-gray-700', isDarkMode);
+            infoButton.classList.toggle('bg-opacity-50', isDarkMode);
+            infoButton.classList.toggle('text-gray-100', isDarkMode);
+            infoButton.classList.toggle('hover:bg-opacity-70', isDarkMode);
+            infoButton.classList.toggle('focus:ring-blue-400', isDarkMode);
+
+            infoButton.classList.toggle('bg-white', !isDarkMode);
+            infoButton.classList.toggle('bg-opacity-10', !isDarkMode);
+            infoButton.classList.toggle('text-gray-800', !isDarkMode);
+            infoButton.classList.toggle('hover:bg-opacity-20', !isDarkMode);
+            infoButton.classList.toggle('focus:ring-gray-500', !isDarkMode);
+
+
+            // Info Modal content
+            infoModal.querySelector('div').classList.toggle('bg-gray-800', isDarkMode);
+            infoModal.querySelector('div').classList.toggle('border-gray-600', isDarkMode);
+            infoModal.querySelector('div').classList.toggle('text-gray-100', isDarkMode);
+
+            infoModal.querySelector('div').classList.toggle('bg-white', !isDarkMode);
+            infoModal.querySelector('div').classList.toggle('text-gray-800', !isDarkMode);
+
+
+            // Close Info Modal Button
+            closeInfoModal.classList.toggle('text-gray-400', isDarkMode);
+            closeInfoModal.classList.toggle('hover:text-gray-100', isDarkMode);
+            closeInfoModal.classList.toggle('focus:ring-blue-400', isDarkMode);
+
+            closeInfoModal.classList.toggle('text-gray-500', !isDarkMode);
+            closeInfoModal.classList.toggle('hover:text-gray-700', !isDarkMode);
+            closeInfoModal.classList.toggle('focus:ring-gray-500', !isDarkMode);
+
+
+            // Placeholder Text (stays gray-400)
+            // no change needed for placeholderText.classList.toggle('text-gray-400', true);
+
+            // No Detections Message
+            noDetectionsMessage.classList.toggle('text-gray-300', isDarkMode);
+            noDetectionsMessage.classList.toggle('text-gray-500', !isDarkMode);
+
+            // Labels (h2, h3 and general labels within panels)
+            document.querySelectorAll('#resultsPanel h2, #settingsPanel h3, label[for="confidenceThreshold"], label[for="imageUpload"], label[for="darkModeToggle"]').forEach(el => {
+                el.classList.toggle('text-gray-100', isDarkMode && el.tagName === 'H2' || el.tagName === 'H3');
+                el.classList.toggle('text-gray-800', !isDarkMode && el.tagName === 'H2' || el.tagName === 'H3');
+                el.classList.toggle('text-gray-200', isDarkMode && (el.tagName === 'LABEL' || el.tagName === 'INPUT'));
+                el.classList.toggle('text-gray-700', !isDarkMode && (el.tagName === 'LABEL' || el.tagName === 'INPUT'));
+            });
+
+            // Input fields (file input)
+            imageUpload.classList.toggle('bg-gray-800', isDarkMode);
+            imageUpload.classList.toggle('bg-opacity-20', isDarkMode);
+            imageUpload.classList.toggle('border-gray-500', isDarkMode);
+            imageUpload.classList.toggle('text-gray-200', isDarkMode);
+            imageUpload.classList.toggle('focus:ring-emerald-400', isDarkMode);
+
+            imageUpload.classList.toggle('bg-white', !isDarkMode);
+            imageUpload.classList.toggle('border-gray-300', !isDarkMode);
+            imageUpload.classList.toggle('text-gray-700', !isDarkMode);
+            imageUpload.classList.toggle('focus:ring-emerald-500', !isDarkMode);
+
+            // Slider track
+            confidenceThresholdInput.classList.toggle('bg-gray-600', isDarkMode);
+            confidenceThresholdInput.classList.toggle('bg-gray-200', !isDarkMode);
+
+            // Value displays
+            confidenceValueDisplay.classList.toggle('text-emerald-400', isDarkMode);
+            confidenceValueDisplay.classList.toggle('text-emerald-600', !isDarkMode);
+
+            // Buttons: Webcam and Clear
+            webcamButton.classList.toggle('bg-emerald-700', isDarkMode);
+            webcamButton.classList.toggle('bg-opacity-30', isDarkMode);
+            webcamButton.classList.toggle('text-emerald-100', isDarkMode);
+            webcamButton.classList.toggle('hover:bg-opacity-40', isDarkMode);
+            webcamButton.classList.toggle('focus:ring-emerald-400', isDarkMode);
+
+            webcamButton.classList.toggle('bg-emerald-600', !isDarkMode);
+            webcamButton.classList.toggle('bg-opacity-10', !isDarkMode);
+            webcamButton.classList.toggle('text-emerald-900', !isDarkMode);
+            webcamButton.classList.toggle('hover:bg-opacity-20', !isDarkMode);
+            webcamButton.classList.toggle('focus:ring-emerald-500', !isDarkMode);
+
+            clearButton.classList.toggle('bg-gray-600', isDarkMode);
+            clearButton.classList.toggle('bg-opacity-30', isDarkMode);
+            clearButton.classList.toggle('text-gray-100', isDarkMode);
+            clearButton.classList.toggle('hover:bg-opacity-40', isDarkMode);
+            clearButton.classList.toggle('focus:ring-gray-400', isDarkMode);
+
+            clearButton.classList.toggle('bg-gray-700', !isDarkMode);
+            clearButton.classList.toggle('bg-opacity-10', !isDarkMode);
+            clearButton.classList.toggle('text-white', !isDarkMode); // Keep white in light mode too, as it's a "darker" button
+            clearButton.classList.toggle('hover:bg-opacity-20', !isDarkMode);
+            clearButton.classList.toggle('focus:ring-gray-500', !isDarkMode);
+
+            // FPS Display
+            fpsDisplay.classList.toggle('text-gray-200', isDarkMode);
+            fpsDisplay.classList.toggle('text-gray-800', !isDarkMode);
+
+            // Loading indicator colors (specific to the alert box div inside loadingDiv)
+            const loadingAlertBox = loadingDiv.querySelector('div');
+            loadingAlertBox.classList.toggle('bg-indigo-700', isDarkMode);
+            loadingAlertBox.classList.toggle('border-indigo-500', isDarkMode);
+            loadingAlertBox.classList.toggle('text-indigo-100', isDarkMode);
+
+            loadingAlertBox.classList.toggle('bg-emerald-100', !isDarkMode);
+            loadingAlertBox.classList.toggle('border-emerald-500', !isDarkMode);
+            loadingAlertBox.classList.toggle('text-emerald-700', !isDarkMode);
+
+            // Update checkerboard background in CSS dynamically
+            const darkCheckerboard = `linear-gradient(45deg, #333 25%, transparent 25%),
+                                      linear-gradient(-45deg, #333 25%, transparent 25%),
+                                      linear-gradient(45deg, transparent 75%, #333 75%),
+                                      linear-gradient(-45deg, transparent 75%, #333 75%)`;
+            const lightCheckerboard = `linear-gradient(45deg, #ccc 25%, transparent 25%),
+                                       linear-gradient(-45deg, #ccc 25%, transparent 25%),
+                                       linear-gradient(45deg, transparent 75%, #ccc 75%),
+                                       linear-gradient(-45deg, transparent 75%, #ccc 75%)`;
+            
+            const checkerboardStyleContent = `
+                .checkerboard-bg {
+                    background-image: ${isDarkMode ? darkCheckerboard : lightCheckerboard};
+                    background-size: 20px 20px;
+                    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+                }
+            `;
+            let checkerboardStyleElement = document.getElementById('checkerboard-style');
+            if (!checkerboardStyleElement) {
+                checkerboardStyleElement = document.createElement('style');
+                checkerboardStyleElement.id = 'checkerboard-style';
+                document.head.appendChild(checkerboardStyleElement);
+            }
+            checkerboardStyleElement.textContent = checkerboardStyleContent;
+
+            // Update scrollbar colors dynamically in CSS
+            const customScrollbarStyle = `
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 8px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: ${isDarkMode ? 'rgba(41, 41, 41, 0.2)' : 'rgba(241, 241, 241, 0.2)'};
+                    border-radius: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: ${isDarkMode ? 'rgba(100, 100, 100, 0.5)' : 'rgba(203, 213, 224, 0.5)'};
+                    border-radius: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: ${isDarkMode ? 'rgba(130, 130, 130, 0.7)' : 'rgba(160, 174, 192, 0.7)'};
+                }
+            `;
+            const scrollbarStyleElementId = 'custom-scrollbar-style';
+            let existingScrollbarStyle = document.getElementById(scrollbarStyleElementId);
+            if (!existingScrollbarStyle) {
+                existingScrollbarStyle = document.createElement('style');
+                existingScrollbarStyle.id = scrollbarStyleElementId;
+                document.head.appendChild(existingScrollbarStyle);
+            }
+            existingScrollbarStyle.textContent = customScrollbarStyle;
+        }
+
 
         // --- Event Listeners for Info Modal ---
         infoButton.addEventListener('click', () => {
@@ -212,13 +420,20 @@
             }
         });
 
+        // --- Dark Mode Toggle Event Listener ---
+        darkModeToggle.addEventListener('change', (event) => {
+            applyThemeClasses(event.target.checked);
+        });
+
         // --- Model Loading ---
         async function loadModel() {
             loadingDiv.classList.remove('hidden');
             loadingMessage.textContent = 'Loading Model...';
             loadingDetail.textContent = 'Please wait while the object detection model loads.';
-            loadingDiv.classList.remove('bg-red-100', 'border-red-500', 'text-red-700'); // Clear any previous error styles
-            loadingDiv.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+            // Set loading indicator colors based on current theme (which is dark by default)
+            loadingDiv.querySelector('div').classList.add('bg-indigo-700', 'border-indigo-500', 'text-indigo-100');
+            loadingDiv.querySelector('div').classList.remove('bg-emerald-100', 'border-emerald-500', 'text-emerald-700', 'bg-red-100', 'border-red-500', 'text-red-700');
+
 
             try {
                 // Load the COCO-SSD model from TensorFlow.js
@@ -230,8 +445,9 @@
                 console.error('Failed to load model:', error);
                 loadingMessage.textContent = 'Error Loading Model!';
                 loadingDetail.textContent = 'Could not load the object detection model. Check your internet connection or try refreshing the page. Details: ' + error.message;
-                loadingDiv.classList.remove('bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
-                loadingDiv.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+                loadingDiv.querySelector('div').classList.add('bg-red-700', 'border-red-500', 'text-red-100');
+                loadingDiv.querySelector('div').classList.remove('bg-indigo-700', 'border-indigo-500', 'text-indigo-100', 'bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+                loadingDiv.classList.remove('hidden'); // Ensure it stays visible on error
             }
         }
 
@@ -293,6 +509,7 @@
                 const displayWidth = width * scale;
                 const displayHeight = height * scale;
 
+                // Bounding box stroke and fill colors remain fixed for contrast on detections
                 ctx.strokeStyle = '#EF4444'; // Red
                 ctx.lineWidth = 2;
                 ctx.strokeRect(displayX, displayY, displayWidth, displayHeight);
@@ -316,12 +533,6 @@
                 bar.className = 'detection-bar';
                 bar.style.width = `${(prediction.score * 100).toFixed(1)}%`;
                 barContainer.appendChild(bar);
-
-                // Removed the label setting for the detection bar.
-                // const label = document.createElement('span');
-                // label.className = 'detection-bar-label';
-                // label.textContent = `${prediction.class}: ${(prediction.score * 100).toFixed(1)}%`;
-                // barContainer.appendChild(label);
 
                 detectionList.appendChild(barContainer);
             });
@@ -369,8 +580,9 @@
                 console.error('Error accessing webcam:', error);
                 loadingMessage.textContent = 'Webcam Access Denied/Error!';
                 loadingDetail.textContent = 'Please ensure you have a camera and grant permissions to use it. Error: ' + error.message;
-                loadingDiv.classList.remove('hidden', 'bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
-                loadingDiv.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+                loadingDiv.querySelector('div').classList.remove('bg-indigo-700', 'border-indigo-500', 'text-indigo-100');
+                loadingDiv.querySelector('div').classList.add('bg-red-700', 'border-red-500', 'text-red-100');
+                loadingDiv.classList.remove('hidden'); // Ensure it stays visible on error
                 stopWebcam();
             }
         }
@@ -430,8 +642,9 @@
                         console.error('Error loading image file.');
                         loadingMessage.textContent = 'Image Load Error!';
                         loadingDetail.textContent = 'Failed to load the selected image. Please try a different file.';
-                        loadingDiv.classList.remove('hidden', 'bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
-                        loadingDiv.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+                        loadingDiv.querySelector('div').classList.remove('bg-indigo-700', 'border-indigo-500', 'text-indigo-100');
+                        loadingDiv.querySelector('div').classList.add('bg-red-700', 'border-red-500', 'text-red-100');
+                        loadingDiv.classList.remove('hidden'); // Ensure it stays visible on error
                         clearButton.click();
                     };
                 };
@@ -462,8 +675,9 @@
             placeholderText.classList.remove('hidden');
             
             loadingDiv.classList.add('hidden');
-            loadingDiv.classList.remove('bg-red-100', 'border-red-500', 'text-red-700');
-            loadingDiv.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-700');
+            // Reset loading message colors to default dark mode if not an error
+            loadingDiv.querySelector('div').classList.remove('bg-red-700', 'border-red-500', 'text-red-100');
+            loadingDiv.querySelector('div').classList.add('bg-indigo-700', 'border-indigo-500', 'text-indigo-100');
         });
 
         function clearResults() {
@@ -472,7 +686,12 @@
         }
 
         // --- Initial Load ---
-        window.onload = loadModel;
+        window.onload = () => {
+            // Apply dark theme initially as it's the default
+            applyThemeClasses(true); // true for dark mode
+            darkModeToggle.checked = true; // Ensure the toggle reflects the default state
+            loadModel();
+        };
     </script>
 </body>
 </html>
